@@ -1,0 +1,217 @@
+-- 🌄 Ambiance Region System (Now Fixes Music Not Playing on Re-Entry)
+-- 🎯 Make sure you have configured "AmbianceSettings" in ReplicatedStorage!
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+
+local RegionsFolder = workspace:FindFirstChild("AmbianceRegions")
+local AmbianceSettings = ReplicatedStorage:FindFirstChild("AmbianceSettings")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local currentRegion = nil
+local originalSettings = {}
+
+-- 🎵 Setup Music System
+local music = Instance.new("Sound")
+music.Parent = SoundService
+music.Looped = true
+music.Volume = 1
+music.Name = "AmbianceMusic"
+
+-- 🎯 Save Original Lighting Values
+local function saveOriginalSettings()
+	originalSettings.Brightness = Lighting.Brightness
+	originalSettings.Density = Lighting.Atmosphere.Density
+	originalSettings.OutdoorAmbient = Lighting.OutdoorAmbient
+	originalSettings.TimeOfDay = Lighting.TimeOfDay
+	originalSettings.Haze = Lighting.Atmosphere.Haze
+	originalSettings.AtColor = Lighting.Atmosphere.Color
+
+	-- Save Skybox if it exists
+	local sky = Lighting:FindFirstChildOfClass("Sky")
+	if sky then
+		originalSettings.Skybox = {
+			SkyboxBk = sky.SkyboxBk,
+			SkyboxDn = sky.SkyboxDn,
+			SkyboxFt = sky.SkyboxFt,
+			SkyboxLf = sky.SkyboxLf,
+			SkyboxRt = sky.SkyboxRt,
+			SkyboxUp = sky.SkyboxUp
+		}
+	end
+end
+
+-- 🌌 Restore Original Settings
+local function restoreOriginalSettings()
+	print("[Ambiance] Restoring original lighting settings...")
+
+	Lighting.Brightness = originalSettings.Brightness
+	Lighting.OutdoorAmbient = originalSettings.OutdoorAmbient
+	Lighting.TimeOfDay = originalSettings.TimeOfDay
+	Lighting.Atmosphere.Haze = originalSettings.Haze
+	Lighting.Atmosphere.Color = originalSettings.AtColor
+	Lighting.Atmosphere.Density = originalSettings.Density
+
+	-- Restore Skybox
+	local sky = Lighting:FindFirstChildOfClass("Sky")
+	if sky and originalSettings.Skybox then
+		sky.SkyboxBk = originalSettings.Skybox.SkyboxBk
+		sky.SkyboxDn = originalSettings.Skybox.SkyboxDn
+		sky.SkyboxFt = originalSettings.Skybox.SkyboxFt
+		sky.SkyboxLf = originalSettings.Skybox.SkyboxLf
+		sky.SkyboxRt = originalSettings.Skybox.SkyboxRt
+		sky.SkyboxUp = originalSettings.Skybox.SkyboxUp
+	end
+
+	-- Stop music when leaving the region
+	music:Stop()
+	print("[Ambiance] Music stopped")
+end
+
+-- 🏞 Apply Ambiance Settings
+local function applyAmbiance(regionName)
+	if not AmbianceSettings then 
+		warn("[Ambiance] No AmbianceSettings folder found in ReplicatedStorage!") 
+		return 
+	end
+
+	local settings = AmbianceSettings:FindFirstChild(regionName)
+	if not settings then 
+		warn("[Ambiance] No settings found for region: " .. regionName) 
+		return 
+	end
+
+	print("[Ambiance] Applying ambiance for region: " .. regionName)
+
+	-- 🎵 Apply Music Settings
+	local musicAsset = settings:FindFirstChild("Music")
+	local volume = settings:FindFirstChild("Volume")
+
+	if musicAsset and musicAsset.Value ~= 0 then
+		local newSoundId = "rbxassetid://" .. tostring(musicAsset.Value)
+
+		-- Only update the SoundId if it's different
+		if music.SoundId ~= newSoundId then
+			print("[Ambiance] Changing music to:", newSoundId)
+			music.SoundId = newSoundId
+		end
+
+		-- Play the music only if it's not already playing
+		if not music.IsPlaying then
+			print("[Ambiance] Playing music")
+			music:Play()
+		end
+	else
+		print("[Ambiance] No music found for region:", regionName)
+	end
+
+	if volume then 
+		music.Volume = volume.Value 
+		print("[Ambiance] Music volume set to:", volume.Value)
+	end
+
+	-- ☀️ Apply Lighting Settings
+	local brightness = settings:FindFirstChild("Brightness")
+	local ambient = settings:FindFirstChild("OutdoorAmbient")
+	local time = settings:FindFirstChild("TimeOfDay")
+	local haze = settings:FindFirstChild("Haze")
+	local atColor = settings:FindFirstChild("AtColor")
+	local density = settings:FindFirstChild("Density")
+
+	if haze then
+		Lighting.Atmosphere.Haze = haze.Value
+		print("[Ambiance] Atmosphere Haze set to:", haze.Value)
+	end
+	
+	if density then
+		Lighting.Atmosphere.Density = density.Value
+		print("[Ambiance] Atmosphere Density set to:", density.Value)
+	end
+
+
+	if atColor then
+		Lighting.Atmosphere.Color = atColor.Value
+		print("[Ambiance] Atmosphere Color set to:", atColor.Value)
+	end
+
+	if brightness then 
+		Lighting.Brightness = brightness.Value 
+		print("[Ambiance] Brightness set to:", brightness.Value)
+	end
+	if ambient then 
+		Lighting.OutdoorAmbient = ambient.Value 
+		print("[Ambiance] OutdoorAmbient set to:", ambient.Value)
+	end
+	if time then 
+		Lighting.TimeOfDay = time.Value 
+		print("[Ambiance] Time of Day set to:", time.Value)
+	end
+
+	-- 🌌 Apply Skybox
+	local skybox = settings:FindFirstChild("Skybox")
+	if skybox then
+		local sky = Lighting:FindFirstChildOfClass("Sky")
+		if sky then
+			local newSkyboxId = "rbxassetid://" .. tostring(skybox.Value)
+			print("[Ambiance] Changing skybox to:", newSkyboxId)
+			sky.SkyboxBk = newSkyboxId
+			sky.SkyboxDn = newSkyboxId
+			sky.SkyboxFt = newSkyboxId
+			sky.SkyboxLf = newSkyboxId
+			sky.SkyboxRt = newSkyboxId
+			sky.SkyboxUp = newSkyboxId
+		end
+	end
+end
+
+-- 🔍 Detect When Player Enters and Exits a Region
+local function checkRegions()
+	while task.wait(1) do
+		if not rootPart then 
+			warn("[Ambiance] Player RootPart not found!") 
+			continue 
+		end
+
+		local newRegion = nil
+
+		for _, region in pairs(RegionsFolder:GetChildren()) do
+			if region:IsA("Part") then
+				local regionCF = region.CFrame
+				local regionSize = region.Size
+				local playerPos = rootPart.Position
+
+				local inRegion = (playerPos.X > regionCF.Position.X - regionSize.X / 2 and playerPos.X < regionCF.Position.X + regionSize.X / 2) and
+					(playerPos.Y > regionCF.Position.Y - regionSize.Y / 2 and playerPos.Y < regionCF.Position.Y + regionSize.Y / 2) and
+					(playerPos.Z > regionCF.Position.Z - regionSize.Z / 2 and playerPos.Z < regionCF.Position.Z + regionSize.Z / 2)
+
+				if inRegion then
+					newRegion = region.Name
+					break -- Exit loop early since we found a region
+				end
+			end
+		end
+
+		-- 🏞 Entering a new region
+		if newRegion and currentRegion ~= newRegion then
+			print("[Ambiance] Entered Region:", newRegion)
+			currentRegion = newRegion
+			applyAmbiance(currentRegion)
+		elseif not newRegion and currentRegion then
+			-- 🚪 Exiting a region
+			print("[Ambiance] Left Region:", currentRegion)
+			restoreOriginalSettings()
+			currentRegion = nil
+		end
+	end
+end
+
+-- 🛠 Initialize the system
+saveOriginalSettings() -- Save default settings
+task.spawn(checkRegions) -- Start checking for region changes
+
+print("[Ambiance] Region system loaded successfully!")
