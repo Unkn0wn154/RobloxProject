@@ -1,0 +1,66 @@
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+-- Animation Setup
+local climbAnimation = Instance.new("Animation")
+climbAnimation.AnimationId = "rbxassetid://121199205292004"  -- Replace with your animation ID
+
+-- Climb Settings
+local climbDistance = 90  -- Distance for the upward dash
+local cooldown = 1  -- Cooldown to prevent spamming
+local doubleTapTime = 0.3  -- Time window for double-tap
+local lastJumpTime = 0
+
+local isClimbing = false
+
+-- Function to check if a wall is in front of the player
+local function isWallInFront()
+	local rayOrigin = rootPart.Position
+	local rayDirection = rootPart.CFrame.LookVector * 3  -- Check 3 studs ahead
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterDescendantsInstances = {character}  -- Ignore the player's character
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+	local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+
+	return result ~= nil  -- Returns true if a wall is detected
+end
+
+-- Function to perform the climbing dash
+local function performClimb()
+	if isClimbing or not isWallInFront() then return end  -- Prevent mid-air climbing
+	isClimbing = true
+
+	-- Play animation
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animator then
+		local climbTrack = animator:LoadAnimation(climbAnimation)
+		climbTrack:Play()
+	end
+
+	-- Move character upwards
+	rootPart.Velocity = Vector3.new(0, climbDistance, 0)
+
+	-- Wait for cooldown
+	task.wait(cooldown)
+	isClimbing = false
+end
+
+-- Detect double-tap on spacebar
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end  -- Ignore UI inputs
+
+	if input.KeyCode == Enum.KeyCode.Space then
+		local currentTime = tick()
+		if currentTime - lastJumpTime <= doubleTapTime then
+			performClimb()
+		end
+		lastJumpTime = currentTime
+	end
+end)
