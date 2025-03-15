@@ -1,0 +1,14 @@
+local Players = game:GetService("Players")
+local BlockingSystem = require(script.Parent.BlockingSystem)
+
+-- Initialize posture when player's character spawns
+local function onCharacterAdded(character, player)
+	BlockingSystem.initializePosture(player)
+end
+
+-- Connect to PlayerAdded and CharacterAdded events
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(character, player)
+	end)
+end)
