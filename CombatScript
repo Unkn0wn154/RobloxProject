@@ -1,0 +1,121 @@
+-- LocalScript inside FistTool
+local tool = script.Parent
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+local animator = humanoid:FindFirstChildOfClass("Animator")
+local debris = game:GetService("Debris")
+local runService = game:GetService("RunService") -- For updating hitbox position
+
+-- Combo setup
+local punchAnimations = {
+	[1] = 18590378553,
+	[2] = 18590389708,
+	[3] = 18590378553,
+	[4] = 18590389708,
+	[5] = 18590394660
+}
+local comboIndex = 1
+local canAttack = true
+local hitCooldown = 0.5 -- Time between hits
+
+-- Hitbox settings
+local hitboxSize = Vector3.new(3, 3, 3)
+local hitboxOffset = CFrame.new(0, 0, -2) -- In front of the player
+local damageAmount = 8
+local activeHitboxes = {} -- Track hitboxes so they move with the player
+
+-- Play Punch Animation
+local function playPunchAnimation()
+	local animation = Instance.new("Animation")
+	animation.AnimationId = "rbxassetid://" .. punchAnimations[comboIndex]
+	local loadedAnim = animator:LoadAnimation(animation)
+	loadedAnim:Play()
+end
+
+-- Create a hitbox that follows the player
+local function createHitbox()
+	local hitbox = Instance.new("Part")
+	hitbox.Size = hitboxSize
+	hitbox.Transparency = 0.5
+	hitbox.Color = Color3.fromRGB(255, 0, 0)  -- Red color for visibility
+	hitbox.CanCollide = false
+	hitbox.Anchored = true
+	hitbox.Parent = workspace
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
+
+	local hitConnections = {} -- Store touched connections
+	local hitTargets = {} -- Prevent hitting the same target multiple times
+
+	-- Keep hitbox moving with the player
+	local function updateHitbox()
+		if hitbox and rootPart then
+			hitbox.CFrame = rootPart.CFrame * hitboxOffset
+		end
+	end
+
+	-- Hit detection
+	local function onHit(hit)
+		local enemy = hit.Parent:FindFirstChildOfClass("Humanoid")
+		if enemy and enemy ~= humanoid and not hitTargets[enemy] then
+			hitTargets[enemy] = true -- Register the hit
+			enemy:TakeDamage(damageAmount)
+		end
+	end
+
+	table.insert(hitConnections, hitbox.Touched:Connect(onHit))
+
+	-- Update hitbox every frame
+	local heartbeatConnection
+	heartbeatConnection = runService.Heartbeat:Connect(function()
+		if hitbox.Parent then
+			updateHitbox()
+		else
+			heartbeatConnection:Disconnect() -- Stop updating if hitbox is removed
+		end
+	end)
+
+	-- Remove hitbox after 0.2s
+	task.delay(0.2, function()
+		for _, conn in pairs(hitConnections) do
+			conn:Disconnect()
+		end
+		hitbox:Destroy()
+		table.remove(activeHitboxes, table.find(activeHitboxes, hitbox))
+	end)
+
+	table.insert(activeHitboxes, hitbox) -- Track active hitbox
+end
+
+-- Perform Punch
+local function performPunch()
+	if not canAttack then return end
+	canAttack = false
+
+	playPunchAnimation()
+	createHitbox()
+
+	comboIndex = comboIndex % #punchAnimations + 1
+
+	task.wait(hitCooldown)
+	canAttack = true
+end
+
+-- Equip and Unequip Tool
+local function onEquipped()
+	print("[DEBUG] Tool equipped!")
+end
+
+local function onUnequipped()
+	print("[DEBUG] Tool unequipped!")
+	comboIndex = 1 -- Reset combo when unequipped
+end
+
+-- Connect Events
+tool.Equipped:Connect(onEquipped)
+tool.Unequipped:Connect(onUnequipped)
+tool.Activated:Connect(performPunch)
+
+print("[DEBUG] Combat script loaded successfully!")
