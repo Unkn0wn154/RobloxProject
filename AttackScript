@@ -1,0 +1,156 @@
+local tool = script.Parent
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+local animator = humanoid:FindFirstChildOfClass("Animator")
+local debris = game:GetService("Debris")
+local runService = game:GetService("RunService")
+local userInput = game:GetService("UserInputService")
+
+-- Combo animations
+local swordAnimations = {
+	[1] = 113917622563761,
+	[2] = 72523213614098,
+	[3] = 113917622563761,
+	[4] = 72523213614098,
+	[5] = 120792562884099
+}
+local heavyAttackAnimation = 104864533465488
+
+-- Settings
+local comboIndex = 1
+local canAttack = true
+local hitCooldown = 0.5
+local heavyCooldown = 3
+local heavyDamageMultiplier = 2.5
+local knockbackForce = 150
+local swordDamage = 10
+local heavyDamage = swordDamage * heavyDamageMultiplier
+local activeHitbox = nil  -- Track hitbox for updating
+local hitboxDuration = 0.4
+
+-- Play animation
+local function playSwordAnimation(animId)
+	local animation = Instance.new("Animation")
+	animation.AnimationId = "rbxassetid://" .. animId
+	local loadedAnim = animator:LoadAnimation(animation)
+	loadedAnim.Priority = Enum.AnimationPriority.Action
+	loadedAnim:Play()
+	return loadedAnim
+end
+
+-- Create hitbox and make it follow sword handle
+local function createHitbox(damage, knockback)
+	local hitbox = Instance.new("Part")
+	hitbox.Size = Vector3.new(3, 1, 5)  -- Adjusted to match sword size better
+	hitbox.Transparency = 0.5  -- Visible for debugging
+	hitbox.Color = Color3.fromRGB(255, 0, 0)
+	hitbox.CanCollide = false
+	hitbox.Massless = true
+	hitbox.Anchored = true  -- Keep it stable
+	hitbox.Parent = workspace
+	hitbox.Name = "SwordHitbox"
+
+	local handle = tool:FindFirstChild("Handle")
+	if not handle then
+		hitbox:Destroy()
+		return
+	end
+
+	-- Position hitbox relative to sword handle
+	hitbox.CFrame = handle.CFrame * CFrame.new(0, 0, -2) -- Slightly in front of the sword
+
+	-- Track hitbox so it follows the sword's handle
+	activeHitbox = hitbox
+
+	-- Damage detection (prevent multi-hit spam)
+	local hitTargets = {}
+
+	hitbox.Touched:Connect(function(hit)
+		local enemy = hit.Parent:FindFirstChildOfClass("Humanoid")
+		if enemy and enemy ~= humanoid and not hitTargets[enemy] then
+			hitTargets[enemy] = true
+			enemy:TakeDamage(damage)
+
+			if knockback then
+				local root = enemy.Parent:FindFirstChild("HumanoidRootPart")
+				if root then
+					local direction = (root.Position - character.HumanoidRootPart.Position).unit
+					root.Velocity = direction * knockbackForce
+				end
+			end
+		end
+	end)
+
+	-- Keep hitbox following the sword
+	local connection
+	connection = runService.RenderStepped:Connect(function()
+		if not hitbox or not handle then
+			connection:Disconnect()
+			return
+		end
+		hitbox.CFrame = handle.CFrame * CFrame.new(0, 0, 0)
+	end)
+
+	-- Remove hitbox after 0.2 seconds
+	task.delay(hitboxDuration, function()
+		if hitbox then
+			hitbox:Destroy()
+		end
+		activeHitbox = nil
+		if connection then
+			connection:Disconnect()
+		end
+	end)
+end
+
+-- Perform normal attack
+local function performAttack()
+	if not canAttack then return end
+	canAttack = false
+
+	local animId = swordAnimations[comboIndex]
+	local anim = playSwordAnimation(animId)
+	createHitbox(swordDamage, false)
+
+	comboIndex = comboIndex % #swordAnimations + 1
+	task.wait(hitCooldown)
+	canAttack = true
+end
+
+-- Perform heavy attack
+local function performHeavyAttack()
+	if not canAttack then return end
+	canAttack = false
+
+	local anim = playSwordAnimation(heavyAttackAnimation)
+	createHitbox(heavyDamage, true)
+
+	task.wait(heavyCooldown)
+	canAttack = true
+end
+
+-- Equip and Unequip events
+local function onEquipped()
+	print("[DEBUG] ClassicSword equipped!")
+end
+
+local function onUnequipped()
+	print("[DEBUG] ClassicSword unequipped!")
+	comboIndex = 1
+end
+
+-- Connect events
+tool.Equipped:Connect(onEquipped)
+tool.Unequipped:Connect(onUnequipped)
+tool.Activated:Connect(performAttack)
+
+userInput.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.R then
+		performHeavyAttack()
+	end
+end)
+
+
+print("[DEBUG] ClassicSword script loaded successfully!")
