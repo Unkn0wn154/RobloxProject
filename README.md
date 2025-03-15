@@ -16,6 +16,7 @@ RunningScript (LocalScript) located in StarterPlayer -> StartPlayerScripts
 NPCAttackScript (Script) located in Workspace -> NPC(model) -> NPCTool (Tool) 
 
 CombatScript (LocalScript) located in StarterPack -> FistTool (Tool) 
+AttackScript (LocalScript) Located in Workspace -> ClassicSword (tool)
 
 #Important Elements
 
