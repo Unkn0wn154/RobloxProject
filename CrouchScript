@@ -1,0 +1,93 @@
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+local crouching = false
+local normalWalkSpeed = humanoid.WalkSpeed
+local crouchSpeed = normalWalkSpeed * 0.5 -- Adjust crouch speed
+local normalHipHeight = humanoid.HipHeight -- Store default height
+local crouchHipHeight = normalHipHeight - 1.3 -- Lower character when crouching
+local runningSpeedThreshold = normalWalkSpeed * 1.2 -- If WalkSpeed exceeds this, it exits crouch
+
+-- Load animations
+local animator = humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator")
+
+local crouchIdleAnim = Instance.new("Animation")
+crouchIdleAnim.AnimationId = "rbxassetid://117886348999567" -- Replace with your animation ID
+local crouchIdleTrack = animator:LoadAnimation(crouchIdleAnim)
+
+local crouchWalkAnim = Instance.new("Animation")
+crouchWalkAnim.AnimationId = "rbxassetid://129214649896502" -- Replace with your animation ID
+local crouchWalkTrack = animator:LoadAnimation(crouchWalkAnim)
+
+-- Function to toggle crouch
+local function toggleCrouch(state)
+	if state == crouching then return end -- Prevent spam
+	crouching = state
+
+	if crouching then
+		humanoid.WalkSpeed = crouchSpeed
+		humanoid.JumpPower = 0 -- Disable jumping
+		humanoid.HipHeight = crouchHipHeight -- Lower body naturally
+		task.wait(0.1) -- Prevent rotation issues before animation starts
+
+		-- Ensure correct animation plays immediately
+		if humanoid.MoveDirection.Magnitude > 0 then
+			crouchWalkTrack:Play()
+		else
+			crouchIdleTrack:Play()
+		end
+	else
+		task.wait(0.1) -- Prevent instant rotation when standing up
+		humanoid.WalkSpeed = normalWalkSpeed
+		humanoid.JumpPower = 50 -- Restore jump power
+		humanoid.HipHeight = normalHipHeight -- Restore normal height
+
+		crouchIdleTrack:Stop()
+		crouchWalkTrack:Stop()
+	end
+end
+
+-- Detect movement to switch between idle and walk animations
+RunService.RenderStepped:Connect(function()
+	if crouching then
+		if humanoid.MoveDirection.Magnitude > 0 then
+			if not crouchWalkTrack.IsPlaying then
+				crouchIdleTrack:Stop()
+				crouchWalkTrack:Play()
+			end
+		else
+			if not crouchIdleTrack.IsPlaying then
+				crouchWalkTrack:Stop()
+				crouchIdleTrack:Play()
+			end
+		end
+	end
+
+	-- If WalkSpeed goes beyond normal crouch speed, uncrouch (prevents crouch-running)
+	if crouching and humanoid.WalkSpeed > runningSpeedThreshold then
+		toggleCrouch(false)
+	end
+end)
+
+-- Input detection for crouch
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+
+	if input.KeyCode == Enum.KeyCode.LeftControl then
+		toggleCrouch(not crouching)
+	elseif input.KeyCode == Enum.KeyCode.Space and crouching then
+		toggleCrouch(false) -- Exit crouch when jumping
+	end
+end)
+
+-- Ensure crouch resets if character dies or respawns
+player.CharacterAdded:Connect(function(newChar)
+	character = newChar
+	humanoid = newChar:FindFirstChildOfClass("Humanoid")
+	crouching = false
+end)
