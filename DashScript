@@ -1,0 +1,90 @@
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+-- Animation IDs (Replace with your own)
+local animations = {
+	Forward = "rbxassetid://81912516357262",
+	Backward = "rbxassetid://81912516357262",
+	Left = "rbxassetid://81912516357262",
+	Right = "rbxassetid://81912516357262"
+}
+
+local cooldown = 0.5  -- Cooldown time in seconds
+local dashSpeed = 150  -- Adjust for roll distance
+local isDashing = false
+
+-- Function to check if the player is on the ground
+local function isOnGround()
+	return humanoid:GetState() == Enum.HumanoidStateType.Running or humanoid:GetState() == Enum.HumanoidStateType.Landed
+end
+
+-- Function to determine dash direction
+local function getDashDirection()
+	local moveDirection = humanoid.MoveDirection
+	if moveDirection.Magnitude == 0 then
+		return "Forward", rootPart.CFrame.LookVector  -- Default to forward if no input
+	end
+
+	local forward = rootPart.CFrame.LookVector
+	local right = rootPart.CFrame.RightVector
+
+	-- Compare moveDirection with character orientation
+	local dotForward = moveDirection:Dot(forward)
+	local dotRight = moveDirection:Dot(right)
+
+	if dotForward > 0.5 then
+		return "Forward", forward
+	elseif dotForward < -0.5 then
+		return "Backward", -forward
+	elseif dotRight > 0.5 then
+		return "Right", right
+	elseif dotRight < -0.5 then
+		return "Left", -right
+	else
+		return "Forward", forward  -- Fallback
+	end
+end
+
+-- Function to perform the directional dash
+local function performDash()
+	if isDashing or not isOnGround() then return end
+	isDashing = true
+
+	-- Determine dash direction & select the corresponding animation
+	local directionKey, dashDirection = getDashDirection()
+	local animationId = animations[directionKey]
+
+	-- Play animation
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animator and animationId then
+		local rollAnimation = Instance.new("Animation")
+		rollAnimation.AnimationId = animationId
+		local rollTrack = animator:LoadAnimation(rollAnimation)
+		rollTrack:Play()
+	end
+
+	-- Move character in the chosen direction
+	rootPart.Velocity = Vector3.new(dashDirection.X * dashSpeed, 0, dashDirection.Z * dashSpeed)
+
+	-- Extend roll movement effect
+	task.wait(0.3)
+	rootPart.Velocity = Vector3.new(0, rootPart.Velocity.Y, 0)
+
+	-- Wait for cooldown
+	task.wait(cooldown)
+	isDashing = false
+end
+
+-- Detect input for rolling dash
+UIS.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end  -- Ignore UI inputs
+
+	if input.KeyCode == Enum.KeyCode.Q then  -- Change key if needed
+		performDash()
+	end
+end)
