@@ -1,0 +1,49 @@
+local BlockingSystem = {}
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local postureEvent = replicatedStorage:FindFirstChild("PostureEvent") or Instance.new("RemoteEvent")
+postureEvent.Name = "PostureEvent"
+postureEvent.Parent = replicatedStorage
+
+-- Function to initialize posture for a player
+function BlockingSystem.initializePosture(player)
+	local character = player.Character
+	if not character then
+		warn("[ERROR] Character not found for", player.Name)
+		return
+	end
+
+	-- Create Posture value if it doesn't exist
+	local postureValue = character:FindFirstChild("Posture") or Instance.new("NumberValue")
+	postureValue.Name = "Posture"
+	postureValue.Value = 50 -- Start at max posture
+	postureValue.Parent = character
+
+	-- Notify the client of the initial posture value
+	postureEvent:FireClient(player, postureValue.Value)
+
+	print("[DEBUG] Posture initialized for", player.Name)
+end
+
+-- Function to apply posture damage
+function BlockingSystem.applyBlockDamage(player, damage)
+	local character = player.Character
+	if not character then
+		warn("[ERROR] Character not found for", player.Name)
+		return
+	end
+
+	local postureValue = character:FindFirstChild("Posture")
+	if postureValue and postureValue:IsA("NumberValue") then
+		local newPosture = math.max(0, postureValue.Value - damage)
+		postureValue.Value = newPosture
+
+		-- Notify the client of the updated posture value
+		postureEvent:FireClient(player, postureValue.Value)
+
+		print("[DEBUG] Applied", damage, "posture damage to", player.Name, "New Posture:", newPosture)
+	else
+		warn("[ERROR] Posture bar not found for", player.Name)
+	end
+end
+
+return BlockingSystem
