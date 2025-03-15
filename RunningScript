@@ -1,0 +1,47 @@
+-- LocalScript inside StarterPlayerScripts
+local UserInputService = game:GetService("UserInputService")
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+local sprintSpeed = 24  -- Adjust sprint speed
+local walkSpeed = 16    -- Default walk speed
+local doubleTapTime = 0.3 -- Time window for detecting double tap
+local lastTap = 0
+
+-- Sprint Animation
+local sprintAnim = Instance.new("Animation")
+sprintAnim.AnimationId = "rbxassetid://126515046776707"  -- Replace with your animation ID
+local animator = humanoid:FindFirstChildOfClass("Animator")
+local sprintTrack = animator:LoadAnimation(sprintAnim)
+
+local function onInputBegan(input, gameProcessed)
+	if gameProcessed then return end
+
+	if input.KeyCode == Enum.KeyCode.W then
+		local currentTime = tick()
+		if currentTime - lastTap <= doubleTapTime then
+			-- Start Sprinting
+			humanoid.WalkSpeed = sprintSpeed
+			if not sprintTrack.IsPlaying then
+				sprintTrack:Play()
+			end
+		end
+		lastTap = currentTime
+	end
+end
+
+local function onInputEnded(input, gameProcessed)
+	if gameProcessed then return end
+
+	if input.KeyCode == Enum.KeyCode.W then
+		-- Stop Sprinting
+		humanoid.WalkSpeed = walkSpeed
+		if sprintTrack.IsPlaying then
+			sprintTrack:Stop()
+		end
+	end
+end
+
+UserInputService.InputBegan:Connect(onInputBegan)
+UserInputService.InputEnded:Connect(onInputEnded)
