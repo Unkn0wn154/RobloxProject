@@ -1,0 +1,151 @@
+local tool = script.Parent
+local npc = tool.Parent  
+local humanoid = npc:FindFirstChildOfClass("Humanoid")
+local animator = humanoid:FindFirstChildOfClass("Animator")
+local runService = game:GetService("RunService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local serverScriptService = game:GetService("ServerScriptService")
+
+-- Get Remote Function for blocking
+local blockFunction = replicatedStorage:FindFirstChild("BlockFunction")
+
+if not blockFunction then
+	warn("[ERROR] BlockFunction not found in ReplicatedStorage!")
+end
+
+-- Load Blocking System
+local applyBlockDamage
+local blockingSystemModule = serverScriptService:FindFirstChild("BlockingSystem")
+
+if blockingSystemModule and blockingSystemModule:IsA("ModuleScript") then
+	local maxAttempts = 5 -- Maximum number of attempts to load the module
+	local attempt = 1
+
+	while attempt <= maxAttempts do
+		local success, blockingSystem = pcall(require, blockingSystemModule)
+		if success and blockingSystem and type(blockingSystem.applyBlockDamage) == "function" then
+			applyBlockDamage = blockingSystem.applyBlockDamage
+			print("[DEBUG] BlockingSystem loaded successfully!")
+			break
+		else
+			warn("[WARNING] Attempt", attempt, "failed to load BlockingSystem. Retrying...")
+			attempt += 1
+			task.wait(1) -- Wait 1 second before retrying
+		end
+	end
+
+	if not applyBlockDamage then
+		warn("[ERROR] BlockingSystem failed to load after", maxAttempts, "attempts!")
+	end
+else
+	warn("[ERROR] BlockingSystem ModuleScript not found!")
+end
+
+local swordAnimations = {
+	[1] = 113917622563761,
+	[2] = 72523213614098,
+	[3] = 113917622563761,
+	[4] = 72523213614098,
+	[5] = 120792562884099
+}
+local attackCooldown = 1  
+local swordDamage = 10  
+local hitboxDuration = 0.4  
+
+local function playSwordAnimation(animId)
+	local animation = Instance.new("Animation")
+	animation.AnimationId = "rbxassetid://" .. animId
+	local loadedAnim = animator:LoadAnimation(animation)
+	loadedAnim.Priority = Enum.AnimationPriority.Action
+	loadedAnim:Play()
+	return loadedAnim
+end
+
+local function createHitbox()
+	local hitbox = Instance.new("Part")
+	hitbox.Size = Vector3.new(3, 1, 5)
+	hitbox.Transparency = 0.5  
+	hitbox.BrickColor = BrickColor.Red()  
+	hitbox.Material = Enum.Material.Neon  
+	hitbox.CanCollide = false
+	hitbox.Massless = true
+	hitbox.Anchored = true  
+	hitbox.Parent = workspace
+	hitbox.Name = "SwordHitbox"
+
+	local handle = tool:FindFirstChild("Handle")
+	if not handle then
+		hitbox:Destroy()
+		return
+	end
+
+	hitbox.CFrame = handle.CFrame * CFrame.new(0, 0, -2)
+	local hitTargets = {}
+
+	hitbox.Touched:Connect(function(hit)
+		local character = hit.Parent
+		local enemyHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local player = game.Players:GetPlayerFromCharacter(character)
+
+		if enemyHumanoid and enemyHumanoid ~= humanoid and not hitTargets[enemyHumanoid] then
+			hitTargets[enemyHumanoid] = true
+
+			local isBlocking = false
+
+			-- ✅ Corrected Block Check
+			if blockFunction and player then
+				local success, response = pcall(function()
+					return blockFunction:InvokeClient(player)
+				end)
+				if success then
+					isBlocking = response
+					print("[DEBUG] BlockFunction invoked successfully. Response:", response)
+				else
+					warn("[ERROR] BlockFunction invocation failed! Error:", response)
+				end
+			else
+				print("[DEBUG] BlockFunction is missing or player is nil.")
+			end
+
+			if isBlocking then
+				if applyBlockDamage then
+					applyBlockDamage(player, swordDamage) -- ✅ Reduce posture
+					print("[DEBUG] Player is BLOCKING! Posture reduced.")
+				else
+					warn("[ERROR] applyBlockDamage function is missing!")
+				end
+			else
+				print("[DEBUG] Player is NOT blocking. Dealing health damage.")
+				enemyHumanoid:TakeDamage(swordDamage)
+			end
+		end
+	end)
+
+	local connection
+	connection = runService.Heartbeat:Connect(function()
+		if hitbox and handle then
+			hitbox.CFrame = handle.CFrame * CFrame.new(0, 0, 0)
+		else
+			connection:Disconnect()
+		end
+	end)
+
+	task.delay(hitboxDuration, function()
+		if hitbox then
+			hitbox:Destroy()
+		end
+		if connection then
+			connection:Disconnect()
+		end
+	end)
+end
+
+-- ✅ Prevent duplicate tool declaration
+task.spawn(function()
+	while true do
+		local animId = swordAnimations[math.random(1, #swordAnimations)]
+		playSwordAnimation(animId)
+		createHitbox()
+		task.wait(attackCooldown)
+	end
+end)
