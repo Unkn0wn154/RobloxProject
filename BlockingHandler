@@ -1,0 +1,165 @@
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local players = game:GetService("Players")
+local userInputService = game:GetService("UserInputService")
+
+local blockFunction = replicatedStorage:FindFirstChild("BlockFunction")
+local blockEvent = replicatedStorage:FindFirstChild("BlockEvent")
+local postureEvent = replicatedStorage:FindFirstChild("PostureEvent")
+
+if not blockFunction or not blockEvent or not postureEvent then
+	warn("[ERROR] BlockFunction, BlockEvent, or PostureEvent missing in ReplicatedStorage!")
+end
+
+local player = players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local animator = humanoid:FindFirstChildOfClass("Animator")
+
+local blocking = false
+local parrying = false
+local maxPosture = 50
+local postureValue = maxPosture -- Initialize postureValue
+local postureRegenRate = 1 -- Posture regenerated per second
+local postureRegenDelay = 0.5 -- Time between regeneration ticks
+
+-- **Blocking Animation**
+local blockAnim = Instance.new("Animation")
+blockAnim.AnimationId = "rbxassetid://84543682745143" -- Change to your animation ID
+local loadedAnim = animator:LoadAnimation(blockAnim)
+
+local function playBlockingAnimation()
+	if animator then
+		loadedAnim.Priority = Enum.AnimationPriority.Action
+		loadedAnim:Play()
+	end
+end
+
+local function stopBlockingAnimation()
+	if animator then
+		loadedAnim:Stop()
+	end
+end
+
+-- **Posture UI Setup**
+local playerGui = player:WaitForChild("PlayerGui")
+local postureGui = playerGui:FindFirstChild("PostureGUI") or Instance.new("ScreenGui")
+postureGui.Name = "PostureGUI"
+postureGui.Parent = playerGui
+
+local postureBar = postureGui:FindFirstChild("PostureBar") or Instance.new("Frame")
+postureBar.Name = "PostureBar"
+postureBar.Size = UDim2.new(0, 200, 0, 20) -- Fixed pixel size
+postureBar.Position = UDim2.new(0.5, -100, 0.9, 0) -- Centered
+postureBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+postureBar.Parent = postureGui
+
+-- **Posture Update Function**
+local function updatePostureUI(posture)
+	local newWidth = (posture / maxPosture) * 200
+	postureBar.Size = UDim2.new(0, newWidth, 0, 20)
+	print("[DEBUG] Posture UI Updated: ", posture, "New Width:", newWidth)
+end
+
+-- Listen for posture updates from the server
+postureEvent.OnClientEvent:Connect(function(posture)
+	postureValue = posture -- Update postureValue from server
+	updatePostureUI(postureValue)
+end)
+
+-- **Posture Regeneration**
+local function regeneratePosture()
+	while true do
+		if not blocking and postureValue < maxPosture then
+			postureValue = math.min(maxPosture, postureValue + postureRegenRate)
+			updatePostureUI(postureValue)
+			postureEvent:FireServer(postureValue) -- Sync with server
+		end
+		task.wait(postureRegenDelay)
+	end
+end
+
+-- Start posture regeneration
+task.spawn(regeneratePosture)
+
+-- **Start Blocking with Parry Window**
+local function startBlocking()
+	if blocking then return end
+	blocking = true
+	parrying = true -- Enable parry for 0.3s
+	print("[DEBUG] Parrying for 0.3s!")
+
+	-- Notify server
+	blockEvent:FireServer(true)
+
+	-- Play animation
+	playBlockingAnimation()
+
+	-- After 0.3s, disable parry but keep blocking
+	task.delay(0.3, function()
+		parrying = false
+		print("[DEBUG] Parry window ended, now just blocking.")
+	end)
+end
+
+-- **Stop Blocking**
+local function stopBlocking()
+	blocking = false
+	parrying = false
+	print("[DEBUG] Blocking stopped!")
+
+	-- Notify server
+	blockEvent:FireServer(false)
+
+	-- Stop animation
+	stopBlockingAnimation()
+end
+
+-- **Handle F key for blocking**
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.F then
+		startBlocking()
+	end
+end)
+
+userInputService.InputEnded:Connect(function(input, gameProcessed)
+	if input.KeyCode == Enum.KeyCode.F then
+		stopBlocking()
+	end
+end)
+
+-- **Server Calls This When NPC Attacks**
+blockFunction.OnClientInvoke = function()
+	print("[DEBUG] BlockFunction called. Returning:", blocking)
+	return blocking, parrying
+end
+
+-- **Receive Posture Updates from Server**
+blockEvent.OnClientEvent:Connect(function(action, value)
+	if action == "UpdatePosture" then
+		postureValue = math.max(0, postureValue - value) -- Reduce posture
+		updatePostureUI(postureValue)
+		print("[DEBUG] Posture Updated:", postureValue)
+
+		-- **If posture reaches 0, trigger guard break**
+		if postureValue <= 0 then
+			print("[DEBUG] Guard Broken! Player stunned.")
+			stopBlockingAnimation()
+			humanoid.WalkSpeed = 0
+			task.wait(2) -- Stunned for 2 seconds
+			humanoid.WalkSpeed = 16
+			postureValue = maxPosture -- Reset posture after break
+			updatePostureUI(postureValue)
+			postureEvent:FireServer(postureValue) -- Sync with server
+		end
+	elseif action == "BreakGuard" then
+		print("[DEBUG] Guard Broken! Player stunned.")
+		stopBlockingAnimation()
+		humanoid.WalkSpeed = 0
+		task.wait(2) -- Stunned for 2 seconds
+		humanoid.WalkSpeed = 16
+		postureValue = maxPosture -- Reset posture
+		updatePostureUI(postureValue)
+		postureEvent:FireServer(postureValue) -- Sync with server
+	end
+end)
